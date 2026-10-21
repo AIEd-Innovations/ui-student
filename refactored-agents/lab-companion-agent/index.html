@@ -1,0 +1,28 @@
+<!doctype html>
+<title>Lab Companion</title>
+<h1>Lab Companion</h1>
+<form id="form">
+  <p><label>Question<br><textarea name="question" required rows="3" cols="60"></textarea></label></p>
+  <p><label>Context<br><textarea name="context" rows="5" cols="60"></textarea></label></p>
+  <button>Get draft hint</button>
+</form>
+<pre id="output"></pre>
+<script>
+document.querySelector('#form').onsubmit = async (event) => {
+  event.preventDefault();
+  const output = document.querySelector('#output');
+  const form = new FormData(event.target);
+  output.textContent = 'Working...';
+  try {
+    const response = await fetch('/api', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: form.get('question'), context: form.get('context')})
+    });
+    const result = await response.json();
+    output.textContent = result.response || result.error || 'No response';
+  } catch (error) {
+    output.textContent = String(error);
+  }
+};
+</script>
