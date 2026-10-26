@@ -64,6 +64,10 @@ class SystemConfig:
     azure_blob_connection_string: str = ""
     azure_blob_container: str = ""
 
+    # ---- Vercel AI Gateway -----------------
+    gateway_api_key: str = ""
+    gateway_model: str = "google/gemini-2.5-flash"
+
     # ---- Tutoring knobs ----------------------------------------------------
     rag_top_n: int = 3
     rag_max_content_chars: int = 1000
@@ -97,6 +101,10 @@ class SystemConfig:
             and self.azure_openai_deployment
         )
 
+    @property
+    def gateway_configured(self) -> bool:
+        return bool(self.gateway_api_key)
+    
     @property
     def cas_enabled(self) -> bool:
         """True when real CAS SSO is fully configured (mock excluded)."""
@@ -148,6 +156,8 @@ class SystemConfig:
             azure_search_indexer_name=os.getenv("AZURE_SEARCH_INDEXER_NAME", ""),
             azure_blob_connection_string=os.getenv("AZURE_BLOB_CONNECTION_STRING", ""),
             azure_blob_container=os.getenv("AZURE_BLOB_CONTAINER_NAME", ""),
+            gateway_api_key=os.genenv("AI_GATEWAY_API_KEY") or os.getenv("VERCEL_OIDC_TOKEN", ""),
+            gateway_model=os.getenv("AI_GATEWAY_MODEL", "google/gemini-2.5-flash"),
             rag_top_n=int(os.getenv("RAG_TOP_N", "3")),
             rag_max_content_chars=int(os.getenv("RAG_MAX_CONTENT_LENGTH", "1000")),
             history_keep_turns=int(os.getenv("HISTORY_KEEP_TURNS", "6")),

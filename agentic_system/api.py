@@ -34,7 +34,7 @@ from typing import Callable, Optional
 from .agents import GuardianAgent, LabCompanion, ParticipantAgent
 from .config import SystemConfig
 from .kb import AzureSearchKB, KnowledgeBase, NullKB
-from .llm import AzureOpenAILLM, LLMClient
+from .llm import AzureOpenAILLM, GatewayLLM, LLMClient
 from .models import SessionState, TurnResult
 from .orchestrator import Orchestrator
 from .store import (
@@ -76,12 +76,10 @@ class LabHarness:
     ) -> "LabHarness":
         cfg = config or SystemConfig.from_env()
 
-        if not cfg.llm_configured and llm is None:
+        if not cfg.llm_configured and not cfg.gateway_configured and llm is None:
             raise RuntimeError(
-                "Default LLM (Azure OpenAI) is not configured. Set "
-                "AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, "
-                "AZURE_OPENAI_DEPLOYMENT_NAME — or pass an `llm` to "
-                "LabHarness.build()."
+                "No LLM configured. Set AZURE_OPENI_* env vars, "
+                "AI_GATEWAY_API_KEY - or pass an `llm` to LabHarness.build()."
             )
 
         llm_client: LLMClient = llm or _build_default_llm(cfg)
@@ -134,7 +132,8 @@ class LabHarness:
 
 # --------------------------------------------------------------- defaults
 def _build_default_llm(config: SystemConfig) -> LLMClient:
-    """Build the default `AzureOpenAILLM` from config."""
+    if config.gateway_configured:
+        return GatewayLLM(api_key=config.gateway_api_key, model=config.gateway_model)
     return AzureOpenAILLM(
         endpoint=config.azure_openai_endpoint,
         api_key=config.azure_openai_api_key,

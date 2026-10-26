@@ -13,5 +13,6 @@ protocol and can be injected via `LabHarness.build(llm=...)`.
 from .azure_openai import AzureOpenAILLM
 from .base import LLMClient
 from .claude import ClaudeLLM
+from .gateway import GatewayLLM
 
-__all__ = ["LLMClient", "AzureOpenAILLM", "ClaudeLLM"]
+__all__ = ["LLMClient", "AzureOpenAILLM", "ClaudeLLM", "GatewayLLM"]
