@@ -266,7 +266,7 @@
         el.style.height = Math.min(el.scrollHeight, 160) + 'px';
     }
 
-    function handleKey(e) {
+    function handleKey(e) {i
         if (e.key === 'Enter' &&  !e.shiftKey) {
             e.preventDefault();
             document.getElementById('input-form').dispatchEvent(new Event('submit'));

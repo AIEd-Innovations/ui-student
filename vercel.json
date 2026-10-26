@@ -1,18 +1,8 @@
 {
     "version": 2, 
-    "builds": [
-        {
-            "src": "api/*.py",
-            "use": "@vercel/python",
-            "config": { "includeFiles": "agentic_system/**" }
-        }, 
-        {
-            "src": "index.html",
-            "use": "@vercel/static"
-        }
-    ],
-    "routes": [
-        { "src": "/api/(.*)", "dest": "/api/$1.py" },
-        { "src": "/(.*)", "dest": "/index.html" }
-    ]
+    "functions": {
+        "api/*.py": {
+            "includeFiles": "agentic_system/**" 
+        } 
+    }
 }
