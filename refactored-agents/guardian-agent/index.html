@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Guardian preview</title>
+<style>
+  body{font:16px system-ui,sans-serif;max-width:760px;margin:40px auto;padding:0 18px;line-height:1.5;color:#202b38}
+  textarea,input,select,button{font:inherit} textarea,input,select{box-sizing:border-box;width:100%;padding:8px} textarea{min-height:90px}
+  button{padding:8px 14px;cursor:pointer} fieldset{border:1px solid #ccd4dc;margin:18px 0;padding:16px}
+  label{display:block;margin:12px 0} pre{white-space:pre-wrap;background:#f2f5f7;padding:14px;border-radius:6px;overflow:auto}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.note{color:#516170}
+</style>
+<h1>Guardian preview</h1>
+<p class="note">Test question classification and draft review. Session counters live in this browser tab for the preview.</p>
+<label>Lab ID <input id="lab" value="sample-lab"></label>
+<label>Student question <textarea id="question" placeholder="What is the difference between voltage and current?"></textarea></label>
+<label>Course material excerpt (optional) <textarea id="context"></textarea></label>
+<div class="row"><button id="validate">Classify question</button><button id="reset" type="button">Reset preview session</button></div>
+<p id="state" class="note"></p>
+<fieldset>
+  <legend>Review a Lab Companion draft</legend>
+  <label>Draft response <textarea id="draft"></textarea></label>
+  <label>Guidance level <select id="guidance"><option>FULL</option><option>MODERATE</option><option>MINIMAL</option><option>REJECTED</option></select></label>
+  <button id="verify">Review draft</button>
+</fieldset>
+<pre id="output">Ready.</pre>
+<script>
+const blank = () => ({question_count:0,violation_count:0,escalated:false});
+let sessionState = blank(), classification = null;
+const output = document.querySelector('#output');
+const stateLine = document.querySelector('#state');
+function renderState(){ stateLine.textContent = `Questions: ${sessionState.question_count} · Violations: ${sessionState.violation_count} · Escalated: ${sessionState.escalated ? 'yes' : 'no'}`; }
+async function send(body){
+  output.textContent = 'Working…';
+  try {
+    const response = await fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const result = await response.json();
+    output.textContent = JSON.stringify(result,null,2);
+    return response.ok ? result : null;
+  } catch(error) { output.textContent = String(error); return null; }
+}
+document.querySelector('#validate').onclick = async () => {
+  const question = document.querySelector('#question').value.trim();
+  if(!question){ output.textContent = 'Enter a student question.'; return; }
+  const result = await send({action:'validate',question,lab_id:document.querySelector('#lab').value,
+    context:document.querySelector('#context').value,session_state:sessionState});
+  if(result){ sessionState = result.session_state; classification = result.classification;
+    document.querySelector('#guidance').value = result.guidance_level; renderState(); }
+};
+document.querySelector('#verify').onclick = async () => {
+  const question = document.querySelector('#question').value.trim();
+  const draft_response = document.querySelector('#draft').value.trim();
+  if(!question || !draft_response){ output.textContent = 'Enter a question and draft response.'; return; }
+  await send({action:'verify',question,draft_response,guidance_level:document.querySelector('#guidance').value,classification});
+};
+document.querySelector('#reset').onclick = () => { sessionState=blank();classification=null;renderState();output.textContent='Preview session reset.'; };
+renderState();
+</script>
+</html>
