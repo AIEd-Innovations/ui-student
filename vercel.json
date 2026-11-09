@@ -1,8 +1,31 @@
 {
-    "version": 2, 
-    "functions": {
-        "api/*.py": {
-            "includeFiles": "agentic_system/**" 
-        } 
-    }
+    "version": 2,
+    "builds": [
+        {
+            "src": "index.html",
+            "use": "@vercel/static"
+        },
+        {
+            "src": "api/turn.py",
+            "use": "@vercel/python",
+            "config": {
+                "includeFiles": [
+                    "refactored-agents/guardian-agent/**",
+                    "refactored-agents/lab-companion-agent/**",
+                    "refactored-agents/participant-agent/**",
+                    "api/requirements.txt"
+                ]
+            }
+        }
+    ],
+    "routes": [
+        {
+            "src": "/api/turn",
+            "dest": "/api/turn.py"
+        },
+        {
+            "src": "/(.*)",
+            "dest": "/index.html"
+        }
+    ]
 }

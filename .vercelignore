@@ -8,4 +8,12 @@ Dockerfile.server
 docker-compose.yml
 requirements-server.txt
 requirements-client.txt
-refactored-agents/
+refactored-agents/guardian-agent/api/
+refactored-agents/guardian-agent/dev_server.py
+refactored-agents/guardian-agent/test.py
+refactored-agents/lab-companion-agent/api/
+refactored-agents/lab-companion-agent/dev_server.py
+refactored-agents/lab-companion-agent/test.py
+refactored-agents/participant-agent/api/
+refactored-agents/participant-agent/dev_server.py
+refactored-agents/participant-agent/test.py

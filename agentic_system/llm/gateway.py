@@ -80,7 +80,8 @@ class GatewayLLM:
             with self._opener(request, timeout=30) as response: 
                 result = json.load(response)
         except HTTPError as exc:
-            raise RuntimeError("Could not reach AI Gateway")
+            body = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"AI Gateway HTTP {exc.code}: {body[:300]}")
         
         try:
             content = result["choices"][0]["message"]["content"]

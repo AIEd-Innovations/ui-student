@@ -156,7 +156,8 @@ class SystemConfig:
             azure_search_indexer_name=os.getenv("AZURE_SEARCH_INDEXER_NAME", ""),
             azure_blob_connection_string=os.getenv("AZURE_BLOB_CONNECTION_STRING", ""),
             azure_blob_container=os.getenv("AZURE_BLOB_CONTAINER_NAME", ""),
-            gateway_api_key=os.genenv("AI_GATEWAY_API_KEY") or os.getenv("VERCEL_OIDC_TOKEN", ""),
+            gateway_api_key=os.get
+            env("AI_GATEWAY_API_KEY") or os.getenv("VERCEL_OIDC_TOKEN", ""),
             gateway_model=os.getenv("AI_GATEWAY_MODEL", "google/gemini-2.5-flash"),
             rag_top_n=int(os.getenv("RAG_TOP_N", "3")),
             rag_max_content_chars=int(os.getenv("RAG_MAX_CONTENT_LENGTH", "1000")),
