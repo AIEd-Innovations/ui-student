@@ -103,7 +103,17 @@
         border-bottom-left-radius: 4px;
     }
 
-    .bubble.error { background: #2d1b1b; border-color: #5a2a2a; color: #f87171; }
+    .bubble.error    { background: #2d1b1b; border-color: #5a2a2a; color: #f87171; }
+    .bubble.rejected { background: #1e1a2e; border-color: #4c3a7a; color: #c4b5fd; }
+
+    .notice {
+        align-self: center;
+        font-size: 12px;
+        padding: 6px 14px;
+        border-radius: 20px;
+        margin: 2px 0;
+    }
+    .notice.violation { background: #2d1f0a; color: #fb923c; border: 1px solid #78350f; }
 
     .typing .bubble {
         display: flex;
@@ -216,15 +226,42 @@
     }
 
     .suggestion-btn:hover { border-color: #4f46e5; color: #a5b4fc; background: #1e1a3a; }
+
+    #upload-btn {
+        background: none;
+        border: 1px solid #2a2a2a;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 12px;
+        color: #888;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: inherit;
+        margin-left: auto;
+        white-space: nowrap;
+    }
+    #upload-btn:hover { border-color: #4f46e5; color: #a5b4fc; }
+    #upload-btn.loaded { border-color: #22c55e; color: #86efac; }
+
+    #pdf-status {
+        font-size: 11px;
+        color: #555;
+        margin-top: 6px;
+        text-align: center;
+        min-height: 14px;
+    }
+    #pdf-status.ready { color: #4ade80; }
 </style>
 </head>
 <body>
 <header>
     <div class="logo">📚</div>
-    <div> 
+    <div>
         <h1>Lab Companion</h1>
         <div class="subtitle">Hints only, not answers</div>
     </div>
+    <input type="file" id="pdf-input" accept=".pdf" style="display:none" onchange="loadPDF(this)">
+    <button id="upload-btn" onclick="document.getElementById('pdf-input').click()">Upload Lab PDF</button>
 </header>
 
 <div id="messages">
@@ -256,18 +293,63 @@
             </svg>
         </button>
     </form>
-    <p class="hint-text">Cal Poly Student UI - Powered by Lab Companion</p>
+    <p id="pdf-status" class="hint-text">Cal Poly Student UI - Powered by Lab Companion</p>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // Conversation history (shown to agents for context)
     const history = [];
+
+    // PDF context — extracted text sent as rag_context on every turn
+    let ragContext = '';
+
+    async function loadPDF(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const status = document.getElementById('pdf-status');
+        const btn    = document.getElementById('upload-btn');
+        status.textContent = 'Reading ' + file.name + '...';
+        status.className = '';
+        btn.textContent = 'Upload Lab PDF';
+        btn.className = '';
+
+        try {
+            const buffer = await file.arrayBuffer();
+            const pdf    = await pdfjsLib.getDocument({ data: buffer }).promise;
+            let text = '';
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page    = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                text += content.items.map(s => s.str).join(' ') + '\n';
+            }
+            // Keep first 6000 chars — enough context, small enough payload
+            ragContext = text.trim().slice(0, 6000);
+            status.textContent = file.name + ' loaded (' + pdf.numPages + ' pages)';
+            status.className = 'ready';
+            btn.textContent = file.name.length > 20 ? file.name.slice(0, 18) + '…' : file.name;
+            btn.className = 'loaded';
+        } catch (err) {
+            status.textContent = 'Could not read PDF — try another file.';
+            ragContext = '';
+        }
+        input.value = '';
+    }
+
+    // Session state round-tripped with every request
+    let sessionState  = { question_count: 0, violation_count: 0, escalated: false };
+    let hintLevels    = [];
+    let learningSummary = 'No prior context.';
 
     function autoResize(el) {
         el.style.height = 'auto';
         el.style.height = Math.min(el.scrollHeight, 160) + 'px';
     }
 
-    function handleKey(e) {i
-        if (e.key === 'Enter' &&  !e.shiftKey) {
+    function handleKey(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             document.getElementById('input-form').dispatchEvent(new Event('submit'));
         }
@@ -285,7 +367,7 @@
         el.scrollTop = el.scrollHeight;
     }
 
-    function appendMessage(role, content, isError = false) {
+    function appendMessage(role, content, isError = false, isRejected = false) {
         const welcome = document.getElementById('welcome');
         if (welcome) welcome.remove();
 
@@ -297,7 +379,7 @@
         avatar.textContent = role === 'user' ? 'S' : '🎓';
 
         const bubble = document.createElement('div');
-        bubble.className = 'bubble' + (isError ? ' error' : '');
+        bubble.className = 'bubble' + (isError ? ' error' : '') + (isRejected ? ' rejected' : '');
         bubble.textContent = content;
 
         wrap.appendChild(avatar);
@@ -305,7 +387,20 @@
         document.getElementById('messages').appendChild(wrap);
         scrollBottom();
     }
-    
+
+    function appendViolationNotice(type) {
+        const msgs = document.getElementById('messages');
+        const notice = document.createElement('div');
+        notice.className = 'notice violation';
+        const labels = {
+            DIRECT_SOLUTION_REQUEST: 'Direct solution request detected — try rephrasing as a conceptual question.',
+            ANSWER_FARMING: 'Pattern detected: questions are building toward a complete solution. Try the next step independently.',
+        };
+        notice.textContent = labels[type] || 'Academic integrity concern flagged.';
+        msgs.appendChild(notice);
+        scrollBottom();
+    }
+
     function showTyping() {
         const welcome = document.getElementById('welcome');
         if (welcome) welcome.remove();
@@ -335,7 +430,7 @@
 
     async function sendMessage(e) {
         e.preventDefault();
-        const ta = document.getElementById('question');
+        const ta  = document.getElementById('question');
         const btn = document.getElementById('send-btn');
         const question = ta.value.trim();
         if (!question) return;
@@ -345,7 +440,6 @@
         btn.disabled = true;
 
         appendMessage('user', question);
-        history.push({ role: 'user', content: question });
 
         showTyping();
 
@@ -355,8 +449,11 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     question,
+                    session_state: sessionState,
                     conversation_history: history.slice(-12),
-                    guidance_level: 'FULL',
+                    learning_summary: learningSummary,
+                    hint_levels: hintLevels,
+                    rag_context: ragContext,
                 })
             });
 
@@ -364,15 +461,31 @@
             removeTyping();
 
             if (data.status === 'completed' && data.response) {
-                appendMessage('assistant', data.response);
-                history.push({ role: 'assistant', content: data.response });
+                const isRejected = data.guidance_level === 'REJECTED';
+                appendMessage('assistant', data.response, false, isRejected);
+
+                // Update round-tripped state
+                if (data.session_state)   sessionState   = data.session_state;
+                if (data.hint_levels)     hintLevels     = data.hint_levels;
+                if (data.learning_summary) learningSummary = data.learning_summary;
+
+                // Show violation notice after the response
+                if (data.violation_detected && data.violation_type) {
+                    appendViolationNotice(data.violation_type);
+                }
+
+                // Only append to history if not rejected (rejected turns don't count as real exchanges)
+                if (!isRejected) {
+                    history.push({ role: 'user', content: question });
+                    history.push({ role: 'assistant', content: data.response });
+                }
             } else {
                 appendMessage('assistant', data.error || 'Something went wrong. Please try again.', true);
             }
         } catch (err) {
             removeTyping();
             appendMessage('assistant', 'Connection error. Please check your network and try again.', true);
-        } 
+        }
 
         btn.disabled = false;
         ta.focus();

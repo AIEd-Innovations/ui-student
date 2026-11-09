@@ -86,6 +86,11 @@ DIRECT_SOLUTION
   Definition: Student requests the specific numerical answer, complete derivation,
   finished code, or full circuit solution for their specific lab assignment, even if
   phrased indirectly.
+  NOT DIRECT_SOLUTION: Debugging questions where the student describes a symptom or
+  unexpected behavior (e.g. "why isn't my circuit giving the right voltage?",
+  "my code crashes here — what am I missing?"). These are PROCEDURAL even if they
+  mention their specific circuit or code, because the student is sharing context,
+  not asking for a handed-over solution.
 
 ANSWER_FARMING
   Definition: A sequence of incrementally specific questions that together would
@@ -100,6 +105,9 @@ ANSWER_FARMING
 3. If the question contains specific numerical values, component names, or an exact
    problem statement from the lab COMBINED with a request to solve/compute/find:
    classify as DIRECT_SOLUTION regardless of phrasing.
+   Exception: if the student is describing a symptom or unexpected result
+   ("my voltage is wrong", "this isn't working", "I'm getting an error") and asking
+   why — that is PROCEDURAL, even if they mention their specific circuit or values.
 4. If the conversation history shows 3 or more questions that together are solving
    one lab problem step-by-step: classify the current question as ANSWER_FARMING
    even if in isolation it looks PROCEDURAL.
