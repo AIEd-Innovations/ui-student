@@ -47,6 +47,18 @@ class SystemConfig:
     dev_auth_bypass: bool = False
     dev_user_id: str = ""
 
+    # ---- Auth (Microsoft Entra ID / Azure AD) --------------------------------
+    # OAuth2 Authorization Code flow. The client redirects users to Microsoft,
+    # receives the auth code, and sends it to the server for back-channel
+    # exchange. ``ms_redirect_uri`` must match the registered redirect URI in
+    # the Azure AD app registration exactly.
+    ms_tenant_id: str = ""
+    ms_client_id: str = ""
+    ms_client_secret: str = ""
+    ms_redirect_uri: str = ""
+    ms_email_domain: str = "calpoly.edu"
+    ms_mock: bool = False
+
     # ---- Azure OpenAI ------------------------------------------------------
     azure_openai_endpoint: str = ""
     azure_openai_api_key: str = ""
@@ -114,6 +126,17 @@ class SystemConfig:
             and self.session_jwt_secret
         )
 
+    @property
+    def ms_enabled(self) -> bool:
+        """True when Microsoft Entra ID auth is fully configured (mock excluded)."""
+        return bool(
+            self.ms_tenant_id
+            and self.ms_client_id
+            and self.ms_client_secret
+            and self.ms_redirect_uri
+            and self.session_jwt_secret
+        )
+
     # ---- Constructors ------------------------------------------------------
     @classmethod
     def from_env(cls, **overrides) -> "SystemConfig":
@@ -143,6 +166,12 @@ class SystemConfig:
             admin_email=os.getenv("ADFEL_ADMIN_EMAIL", ""),
             dev_auth_bypass=os.getenv("ADFEL_DEV_AUTH_BYPASS", "").lower() in ("1", "true", "yes"),
             dev_user_id=os.getenv("ADFEL_DEV_USER_ID", ""),
+            ms_tenant_id=os.getenv("MS_TENANT_ID", ""),
+            ms_client_id=os.getenv("MS_CLIENT_ID", ""),
+            ms_client_secret=os.getenv("MS_CLIENT_SECRET", ""),
+            ms_redirect_uri=os.getenv("MS_REDIRECT_URI", ""),
+            ms_email_domain=os.getenv("MS_EMAIL_DOMAIN", "calpoly.edu"),
+            ms_mock=os.getenv("MS_MOCK", "").lower() in ("1", "true", "yes"),
             azure_openai_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
             azure_openai_api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
             azure_openai_deployment=os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", ""),

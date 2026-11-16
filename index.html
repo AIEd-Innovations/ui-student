@@ -300,6 +300,18 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+    // Auth gate — check session on page load; redirect to Microsoft login if not signed in
+    (async function checkAuth() {
+        try {
+            const r = await fetch('/api/me', { credentials: 'include' });
+            if (r.status === 401) {
+                window.location.replace('/api/login');
+            }
+        } catch (_) {
+            // Network error — let the page load; turn requests will surface the problem
+        }
+    })();
+
     // Conversation history (shown to agents for context)
     const history = [];
 
@@ -456,6 +468,12 @@
                     rag_context: ragContext,
                 })
             });
+
+            if (res.status === 401) {
+                removeTyping();
+                window.location.replace('/api/login');
+                return;
+            }
 
             const data = await res.json();
             removeTyping();

@@ -25,8 +25,9 @@ from server.auth import (
     mint_session_jwt,
     resolve_or_create_user,
     validate_cas_ticket,
+    validate_ms_code,
 )
-from server.schemas import CasValidateRequest, CasValidateResponse
+from server.schemas import CasValidateRequest, CasValidateResponse, MsValidateRequest
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,34 @@ async def validate_cas(body: CasValidateRequest, request: Request):
 
     def _do() -> str:
         identity = validate_cas_ticket(body.ticket, cfg)
+        user = resolve_or_create_user(
+            store,
+            sso_subject=identity["netid"],
+            email=identity["email"],
+            name=identity["name"],
+            admin_email=cfg.admin_email,
+        )
+        return mint_session_jwt(user, cfg)
+
+    token = await asyncio.to_thread(_do)
+    return CasValidateResponse(token=token, expires_in=cfg.session_jwt_ttl)
+
+
+@router.post("/ms/validate", response_model=CasValidateResponse)
+async def validate_ms(body: MsValidateRequest, request: Request):
+    """Exchange a Microsoft OAuth2 auth code for a session JWT.
+
+    The server does the back-channel token exchange with Microsoft so the
+    client_secret never leaves the server. Resolution and minting follow
+    the same path as CAS — the sso_subject is the Cal Poly netid extracted
+    from the user's UPN, so CAS and MS users with the same netid are the
+    same DB row.
+    """
+    cfg: SystemConfig = request.app.state.config
+    store: SystemStore = request.app.state.system_store
+
+    def _do() -> str:
+        identity = validate_ms_code(body.code, cfg)
         user = resolve_or_create_user(
             store,
             sso_subject=identity["netid"],

@@ -185,6 +185,105 @@ def validate_cas_ticket(ticket: str, cfg: SystemConfig) -> dict:
     return {"netid": netid, "email": email, "name": name}
 
 
+# ---------------------------------------------------------- Microsoft auth
+def validate_ms_code(code: str, cfg: SystemConfig) -> dict:
+    """Exchange a Microsoft OAuth2 auth code and return normalized identity.
+
+    Returns ``{"netid", "email", "name"}``. When ``cfg.ms_mock`` is set, this
+    short-circuits to a fixed mock identity with no network call. Otherwise it
+    back-channels the code exchange with Microsoft's token endpoint, then calls
+    Microsoft Graph ``/me`` to get the user's UPN and display name.
+
+    ``redirect_uri`` must match the registered URI in the Azure AD app
+    registration exactly — it is taken from ``cfg.ms_redirect_uri`` (never
+    a caller-supplied value) so both legs of the flow stay in sync.
+    """
+    if cfg.ms_mock:
+        netid = cfg.dev_user_id or "mockstudent"
+        email = cfg.admin_email or f"{netid}@{cfg.ms_email_domain}"
+        logger.warning("MS_MOCK active — authenticating mock identity %s", netid)
+        return {"netid": netid, "email": email, "name": "Mock MS User"}
+
+    if not cfg.ms_enabled:
+        raise HTTPException(
+            status_code=500,
+            detail="Microsoft auth is not configured (set MS_TENANT_ID, MS_CLIENT_ID, "
+            "MS_CLIENT_SECRET, MS_REDIRECT_URI, SESSION_JWT_SECRET) and MS_MOCK is off",
+        )
+
+    try:
+        import httpx
+    except ImportError as e:  # pragma: no cover
+        raise HTTPException(
+            status_code=500, detail="httpx is not installed on the server"
+        ) from e
+
+    # Back-channel: exchange auth code for tokens
+    token_url = (
+        f"https://login.microsoftonline.com/{cfg.ms_tenant_id}/oauth2/v2.0/token"
+    )
+    try:
+        token_resp = httpx.post(
+            token_url,
+            data={
+                "client_id": cfg.ms_client_id,
+                "client_secret": cfg.ms_client_secret,
+                "code": code,
+                "redirect_uri": cfg.ms_redirect_uri,
+                "grant_type": "authorization_code",
+                "scope": "openid email profile User.Read",
+            },
+            timeout=10.0,
+        )
+        token_resp.raise_for_status()
+        tokens = token_resp.json()
+    except Exception as e:
+        logger.info("Microsoft token exchange failed: %s", e)
+        raise HTTPException(
+            status_code=401, detail="Microsoft token exchange failed"
+        ) from e
+
+    if "error" in tokens:
+        logger.info("Microsoft token error response: %s", tokens.get("error_description"))
+        raise HTTPException(status_code=401, detail="Microsoft token exchange failed")
+
+    access_token = tokens.get("access_token", "")
+    if not access_token:
+        raise HTTPException(status_code=401, detail="No access_token in Microsoft response")
+
+    # Fetch identity from Microsoft Graph /me
+    try:
+        me_resp = httpx.get(
+            "https://graph.microsoft.com/v1.0/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10.0,
+        )
+        me_resp.raise_for_status()
+        me = me_resp.json()
+    except Exception as e:
+        logger.info("Microsoft Graph /me failed: %s", e)
+        raise HTTPException(
+            status_code=401, detail="Failed to fetch Microsoft profile"
+        ) from e
+
+    # Prefer mail; fall back to userPrincipalName (UPN)
+    email = me.get("mail") or me.get("userPrincipalName") or ""
+    name = me.get("displayName") or ""
+
+    if not email:
+        raise HTTPException(
+            status_code=401,
+            detail="Could not extract email from Microsoft profile",
+        )
+
+    # Cal Poly UPNs are netid@calpoly.edu — extract the netid as sso_subject
+    netid = email.split("@")[0] if "@" in email else email
+    if "@" not in email:
+        email = f"{email}@{cfg.ms_email_domain}"
+
+    return {"netid": netid, "email": email, "name": name}
+
+
 def resolve_or_create_user(
     store: SystemStore,
     *,
