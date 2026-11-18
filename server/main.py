@@ -66,6 +66,13 @@ async def lifespan(app: FastAPI):
             "authenticated as %s",
             cfg.dev_user_id or cfg.admin_email or "<ephemeral admin>",
         )
+    elif cfg.ms_mock:
+        logger.warning(
+            "MS_MOCK is active — /auth/ms/validate authenticates a mock "
+            "identity without contacting Microsoft",
+        )
+    elif cfg.ms_enabled:
+        logger.info("Microsoft Entra ID auth enabled (tenant=%s)", cfg.ms_tenant_id)
     elif cfg.cas_mock:
         logger.warning(
             "CAS_MOCK is active — /auth/cas/validate authenticates a mock "
@@ -75,8 +82,8 @@ async def lifespan(app: FastAPI):
         logger.info("CAS SSO enabled (base=%s)", cfg.cas_base_url)
     else:
         logger.warning(
-            "No auth configured — set CAS_* (+ SESSION_JWT_SECRET) or a dev "
-            "switch; protected routes will 401/500",
+            "No auth configured — set MS_* or CAS_* (+ SESSION_JWT_SECRET) "
+            "or a dev switch; protected routes will 401/500",
         )
     logger.info("ADFEL server ready")
     try:
