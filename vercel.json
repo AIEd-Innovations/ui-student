@@ -6,6 +6,18 @@
             "use": "@vercel/static"
         },
         {
+            "src": "api/login.py",
+            "use": "@vercel/python"
+        },
+        {
+            "src": "api/callback.py",
+            "use": "@vercel/python"
+        },
+        {
+            "src": "api/me.py",
+            "use": "@vercel/python"
+        },
+        {
             "src": "api/turn.py",
             "use": "@vercel/python",
             "config": {
@@ -19,6 +31,18 @@
         }
     ],
     "routes": [
+        {
+            "src": "/api/login",
+            "dest": "/api/login.py"
+        },
+        {
+            "src": "/api/callback",
+            "dest": "/api/callback.py"
+        },
+        {
+            "src": "/api/me",
+            "dest": "/api/me.py"
+        },
         {
             "src": "/api/turn",
             "dest": "/api/turn.py"

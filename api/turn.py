@@ -32,10 +32,54 @@ Response JSON:
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import os
 import sys
+import time
 from http.server import BaseHTTPRequestHandler
+
+# ---- session JWT verification (stdlib only, mirrors api/me.py) --------------
+
+_SESSION_JWT_SECRET = os.environ.get("SESSION_JWT_SECRET", "")
+_SESSION_COOKIE = "adfel_session"
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def _b64url_decode(s: str) -> bytes:
+    padding = 4 - len(s) % 4
+    return base64.urlsafe_b64decode(s + "=" * padding)
+
+
+def _verify_session(cookie_header: str) -> dict | None:
+    token = ""
+    for part in cookie_header.split(";"):
+        k, _, v = part.strip().partition("=")
+        if k.strip() == _SESSION_COOKIE:
+            token = v.strip()
+            break
+    if not _SESSION_JWT_SECRET or not token:
+        return None
+    try:
+        parts = token.split(".")
+        if len(parts) != 3:
+            return None
+        header, payload, sig = parts
+        msg = f"{header}.{payload}".encode()
+        expected = _b64url(hmac.new(_SESSION_JWT_SECRET.encode(), msg, hashlib.sha256).digest())
+        if not hmac.compare_digest(sig, expected):
+            return None
+        claims = json.loads(_b64url_decode(payload))
+        if claims.get("exp", 0) < time.time():
+            return None
+        return claims
+    except Exception:
+        return None
 
 # ---------------------------------------------------------------------------
 # Load refactored agents by absolute file path via importlib so we don't
@@ -220,6 +264,15 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
+        # Enforce authentication — reject requests with no valid session cookie.
+        # When SESSION_JWT_SECRET is not set the check is skipped so local dev
+        # without env vars still works.
+        if _SESSION_JWT_SECRET:
+            claims = _verify_session(self.headers.get("Cookie", ""))
+            if not claims:
+                self._json({"status": "error", "error": "unauthorized"}, 401)
+                return
+
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length)) if length else {}

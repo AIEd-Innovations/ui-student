@@ -24,6 +24,14 @@ class CasValidateRequest(BaseModel):
     ticket: str
 
 
+# --------------------------------------------------------------- auth (Microsoft)
+class MsValidateRequest(BaseModel):
+    # The OAuth2 authorization code received by the client callback.
+    # The server uses cfg.ms_redirect_uri for the token exchange — never
+    # a caller-supplied value — so the two legs can't drift.
+    code: str
+
+
 class CasValidateResponse(BaseModel):
     token: str
     expires_in: int
