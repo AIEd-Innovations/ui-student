@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in — Lab Companion</title>
+<style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background: #0a0a0a;
+        color: #e5e5e5;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    }
+
+    .card {
+        background: #141414;
+        border: 1px solid #222;
+        border-radius: 20px;
+        padding: 48px 40px;
+        width: 100%;
+        max-width: 400px;
+        text-align: center;
+        box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+    }
+
+    .logo-wrap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 64px;
+        height: 64px;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        border-radius: 16px;
+        font-size: 30px;
+        margin-bottom: 24px;
+        box-shadow: 0 8px 32px rgba(79,70,229,0.35);
+    }
+
+    h1 {
+        font-size: 24px;
+        font-weight: 700;
+        color: #f5f5f5;
+        margin-bottom: 8px;
+        letter-spacing: -0.3px;
+    }
+
+    .course-badge {
+        display: inline-block;
+        font-size: 12px;
+        color: #888;
+        background: #1e1e1e;
+        border: 1px solid #2a2a2a;
+        border-radius: 20px;
+        padding: 4px 12px;
+        margin-bottom: 32px;
+    }
+
+    .description {
+        font-size: 14px;
+        color: #666;
+        line-height: 1.6;
+        margin-bottom: 36px;
+    }
+
+    /* Microsoft sign-in button — follows Microsoft's branding guidelines */
+    .ms-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+        padding: 12px 20px;
+        background: #ffffff;
+        color: #3c3c3c;
+        border: none;
+        border-radius: 4px;
+        font-size: 15px;
+        font-weight: 600;
+        font-family: 'Segoe UI', -apple-system, sans-serif;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 0.15s, box-shadow 0.15s;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        letter-spacing: 0.1px;
+    }
+
+    .ms-btn:hover {
+        background: #f3f3f3;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+
+    .ms-btn:active {
+        background: #ebebeb;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+
+    /* Microsoft 4-square logo */
+    .ms-logo {
+        width: 20px;
+        height: 20px;
+        flex-shrink: 0;
+    }
+
+    .divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 28px 0;
+        color: #333;
+        font-size: 12px;
+    }
+    .divider::before, .divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: #222;
+    }
+
+    .footer-note {
+        font-size: 12px;
+        color: #3a3a3a;
+        line-height: 1.6;
+    }
+
+    .footer-note a {
+        color: #555;
+        text-decoration: none;
+    }
+    .footer-note a:hover { color: #888; }
+
+    .help-toggle {
+        background: none;
+        border: none;
+        color: #444;
+        font-size: 12px;
+        cursor: pointer;
+        margin-top: 16px;
+        font-family: inherit;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        transition: color 0.2s;
+        padding: 0;
+    }
+    .help-toggle:hover { color: #888; }
+
+    .help-box {
+        display: none;
+        margin-top: 20px;
+        background: #0f0f0f;
+        border: 1px solid #222;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: left;
+    }
+    .help-box.open { display: block; }
+
+    .help-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: #555;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 14px !important;
+    }
+
+    .help-box ol {
+        padding-left: 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .help-box li {
+        font-size: 13px;
+        color: #666;
+        line-height: 1.6;
+    }
+
+    .help-box li strong { color: #999; }
+    .help-box li em { color: #a5b4fc; font-style: normal; }
+
+    /* Subtle animated background gradient */
+    body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(79,70,229,0.08) 0%, transparent 70%);
+        pointer-events: none;
+        z-index: 0;
+    }
+
+    .card { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+
+<div class="card">
+    <div class="logo-wrap">📚</div>
+    <h1>Lab Companion</h1>
+    <div class="course-badge">Student UI · Cal Poly</div>
+
+    <p class="description">
+        Your AI-powered lab tutor. Get hints and guidance —
+        not direct answers — to help you learn.
+    </p>
+
+    <a class="ms-btn" href="/api/login">
+        <!-- Microsoft logo SVG -->
+        <svg class="ms-logo" viewBox="0 0 21 21" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1"  y="1"  width="9" height="9" fill="#f25022"/>
+            <rect x="11" y="1"  width="9" height="9" fill="#7fba00"/>
+            <rect x="1"  y="11" width="9" height="9" fill="#00a4ef"/>
+            <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+        </svg>
+        Sign in with Microsoft
+    </a>
+
+    <div class="divider">Cal Poly accounts only</div>
+
+    <p class="footer-note">
+        Use your <strong style="color:#555">@calpoly.edu</strong> Microsoft account.<br>
+        Personal accounts will be denied access.
+    </p>
+
+    <button class="help-toggle" onclick="toggleHelp()">Need help signing in?</button>
+
+    <div class="help-box" id="help-box">
+        <p class="help-title">Troubleshooting</p>
+        <ol>
+            <li>
+                <strong>Use your Cal Poly account</strong><br>
+                Sign in with <em>emplID@calpoly.edu</em> — not a personal Gmail or Outlook account.
+            </li>
+            <li>
+                <strong>Microsoft asks to pick an account?</strong><br>
+                Choose your @calpoly.edu address from the list, or click "Use another account" and type it in.
+            </li>
+            <li>
+                <strong>Getting "Access denied"?</strong><br>
+                You signed in with the wrong account. Click "Try again" and use your Cal Poly email.
+            </li>
+            <li>
+                <strong>Stuck in a loop?</strong><br>
+                Clear your browser cookies for this site, then try again. In Chrome: Settings → Privacy → Cookies → See all site data → search for this site → Delete.
+            </li>
+            <li>
+                <strong>Still not working?</strong><br>
+                Try opening in an incognito / private window to rule out cached credentials.
+            </li>
+        </ol>
+    </div>
+</div>
+
+<script>
+    function toggleHelp() {
+        const box = document.getElementById('help-box');
+        const btn = document.querySelector('.help-toggle');
+        const open = box.classList.toggle('open');
+        btn.textContent = open ? 'Hide troubleshooting' : 'Need help signing in?';
+    }
+</script>
+</body>
+</html>

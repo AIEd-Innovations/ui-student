@@ -6,6 +6,10 @@
             "use": "@vercel/static"
         },
         {
+            "src": "login.html",
+            "use": "@vercel/static"
+        },
+        {
             "src": "api/login.py",
             "use": "@vercel/python"
         },
@@ -15,6 +19,10 @@
         },
         {
             "src": "api/me.py",
+            "use": "@vercel/python"
+        },
+        {
+            "src": "api/logout.py",
             "use": "@vercel/python"
         },
         {
@@ -32,6 +40,10 @@
     ],
     "routes": [
         {
+            "src": "/login",
+            "dest": "/login.html"
+        },
+        {
             "src": "/api/login",
             "dest": "/api/login.py"
         },
@@ -42,6 +54,10 @@
         {
             "src": "/api/me",
             "dest": "/api/me.py"
+        },
+        {
+            "src": "/api/logout",
+            "dest": "/api/logout.py"
         },
         {
             "src": "/api/turn",

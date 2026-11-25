@@ -243,10 +243,61 @@
     #upload-btn:hover { border-color: #4f46e5; color: #a5b4fc; }
     #upload-btn.loaded { border-color: #22c55e; color: #86efac; }
 
+    #user-display {
+        font-size: 11px;
+        color: #555;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 160px;
+    }
+
+    #logout-btn {
+        background: none;
+        border: 1px solid #2a2a2a;
+        border-radius: 8px;
+        padding: 6px 12px;
+        font-size: 12px;
+        color: #666;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-family: inherit;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    #logout-btn:hover { border-color: #ef4444; color: #f87171; }
+
+    #toast {
+        position: fixed;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e1a3a;
+        border: 1px solid #4c3a7a;
+        color: #c4b5fd;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        z-index: 1000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+    }
+    #toast.show { opacity: 1; }
+
+    #char-counter {
+        font-size: 10px;
+        color: #333;
+        text-align: right;
+        margin-top: 4px;
+        transition: color 0.2s;
+    }
+    #char-counter.warn { color: #f97316; }
+
     #pdf-status {
         font-size: 11px;
         color: #555;
-        margin-top: 6px;
+        margin-top: 2px;
         text-align: center;
         min-height: 14px;
     }
@@ -260,8 +311,10 @@
         <h1>Lab Companion</h1>
         <div class="subtitle">Hints only, not answers</div>
     </div>
+    <span id="user-display"></span>
     <input type="file" id="pdf-input" accept=".pdf" style="display:none" onchange="loadPDF(this)">
     <button id="upload-btn" onclick="document.getElementById('pdf-input').click()">Upload Lab PDF</button>
+    <button id="logout-btn" onclick="signOut()">Sign out</button>
 </header>
 
 <div id="messages">
@@ -278,14 +331,17 @@
     </div>
 </div>
 
+<div id="toast"></div>
+
 <div id = "input-area">
     <form id="input-form" onsubmit="sendMessage(event)">
         <textarea
         id="question"
         placeholder="Ask about the lab..."
         rows="1"
+        maxlength="2000"
         onkeydown="handleKey(event)"
-        oninput="autoResize(this)"
+        oninput="autoResize(this); updateCharCounter(this)"
     ></textarea>
     <button type="submit" id="send-btn" title="Send">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -293,6 +349,7 @@
             </svg>
         </button>
     </form>
+    <div id="char-counter"></div>
     <p id="pdf-status" class="hint-text">Cal Poly Student UI - Powered by Lab Companion</p>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -300,24 +357,93 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-    // Auth gate — check session on page load; redirect to Microsoft login if not signed in
+    // ---- state ------------------------------------------------------------------
+    const history = [];
+    let ragContext = '';
+    let sessionState  = { question_count: 0, violation_count: 0, escalated: false };
+    let hintLevels    = [];
+    let learningSummary = 'No prior context.';
+
+    // ---- toast ------------------------------------------------------------------
+    function showToast(msg, duration = 3000) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        setTimeout(() => el.classList.remove('show'), duration);
+    }
+
+    // ---- auth -------------------------------------------------------------------
     (async function checkAuth() {
         try {
             const r = await fetch('/api/me', { credentials: 'include' });
             if (r.status === 401) {
-                window.location.replace('/api/login');
+                window.location.replace('/login');
+                return;
             }
-        } catch (_) {
-            // Network error — let the page load; turn requests will surface the problem
-        }
+            if (r.ok) {
+                const user = await r.json();
+                const el = document.getElementById('user-display');
+                if (el) el.textContent = user.name || user.email || '';
+            }
+        } catch (_) {}
+        // Restore saved session after auth confirmed
+        _loadFromStorage();
+        _restoreMessages();
     })();
 
-    // Conversation history (shown to agents for context)
-    const history = [];
+    function signOut() {
+        try { localStorage.clear(); } catch (_) {}
+        window.location.href = '/api/logout';
+    }
 
-    // PDF context — extracted text sent as rag_context on every turn
-    let ragContext = '';
+    // ---- localStorage persistence -----------------------------------------------
+    function _saveToStorage() {
+        try {
+            localStorage.setItem('adfel_history', JSON.stringify(history.slice(-20)));
+            localStorage.setItem('adfel_state', JSON.stringify(sessionState));
+            localStorage.setItem('adfel_hints', JSON.stringify(hintLevels));
+            localStorage.setItem('adfel_summary', learningSummary);
+        } catch (_) {}
+    }
 
+    function _loadFromStorage() {
+        try {
+            const h  = JSON.parse(localStorage.getItem('adfel_history') || '[]');
+            const s  = JSON.parse(localStorage.getItem('adfel_state')   || 'null');
+            const hl = JSON.parse(localStorage.getItem('adfel_hints')   || '[]');
+            const sm = localStorage.getItem('adfel_summary');
+            h.forEach(m => history.push(m));
+            if (s)  sessionState    = s;
+            if (hl.length) hintLevels = hl;
+            if (sm) learningSummary = sm;
+        } catch (_) {}
+    }
+
+    function _restoreMessages() {
+        if (history.length === 0) return;
+        const welcome = document.getElementById('welcome');
+        if (welcome) welcome.remove();
+        for (let i = 0; i < history.length; i += 2) {
+            if (history[i])   appendMessage('user',      history[i].content,   false, false, true);
+            if (history[i+1]) appendMessage('assistant', history[i+1].content, false, false, true);
+        }
+        scrollBottom();
+    }
+
+    // ---- char counter -----------------------------------------------------------
+    function updateCharCounter(ta) {
+        const el = document.getElementById('char-counter');
+        if (!el) return;
+        const remaining = 2000 - ta.value.length;
+        if (remaining <= 200) {
+            el.textContent = `${remaining} characters remaining`;
+            el.className = remaining <= 50 ? 'warn' : '';
+        } else {
+            el.textContent = '';
+        }
+    }
+
+    // ---- PDF loading ------------------------------------------------------------
     async function loadPDF(input) {
         const file = input.files[0];
         if (!file) return;
@@ -350,10 +476,7 @@
         input.value = '';
     }
 
-    // Session state round-tripped with every request
-    let sessionState  = { question_count: 0, violation_count: 0, escalated: false };
-    let hintLevels    = [];
-    let learningSummary = 'No prior context.';
+    // (state declared above)
 
     function autoResize(el) {
         el.style.height = 'auto';
@@ -379,7 +502,7 @@
         el.scrollTop = el.scrollHeight;
     }
 
-    function appendMessage(role, content, isError = false, isRejected = false) {
+    function appendMessage(role, content, isError = false, isRejected = false, noScroll = false) {
         const welcome = document.getElementById('welcome');
         if (welcome) welcome.remove();
 
@@ -397,7 +520,7 @@
         wrap.appendChild(avatar);
         wrap.appendChild(bubble);
         document.getElementById('messages').appendChild(wrap);
-        scrollBottom();
+        if (!noScroll) scrollBottom();
     }
 
     function appendViolationNotice(type) {
@@ -459,6 +582,7 @@
             const res = await fetch('/api/turn', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({
                     question,
                     session_state: sessionState,
@@ -471,7 +595,17 @@
 
             if (res.status === 401) {
                 removeTyping();
-                window.location.replace('/api/login');
+                showToast('Session expired — redirecting to sign in…');
+                try { localStorage.clear(); } catch (_) {}
+                setTimeout(() => window.location.replace('/login'), 1500);
+                return;
+            }
+
+            if (res.status === 429) {
+                removeTyping();
+                showToast('Slow down — please wait a moment before sending another message.');
+                btn.disabled = false;
+                ta.focus();
                 return;
             }
 
@@ -483,8 +617,8 @@
                 appendMessage('assistant', data.response, false, isRejected);
 
                 // Update round-tripped state
-                if (data.session_state)   sessionState   = data.session_state;
-                if (data.hint_levels)     hintLevels     = data.hint_levels;
+                if (data.session_state)    sessionState    = data.session_state;
+                if (data.hint_levels)      hintLevels      = data.hint_levels;
                 if (data.learning_summary) learningSummary = data.learning_summary;
 
                 // Show violation notice after the response
@@ -492,11 +626,13 @@
                     appendViolationNotice(data.violation_type);
                 }
 
-                // Only append to history if not rejected (rejected turns don't count as real exchanges)
+                // Only append to history if not rejected
                 if (!isRejected) {
                     history.push({ role: 'user', content: question });
                     history.push({ role: 'assistant', content: data.response });
                 }
+
+                _saveToStorage();
             } else {
                 appendMessage('assistant', data.error || 'Something went wrong. Please try again.', true);
             }

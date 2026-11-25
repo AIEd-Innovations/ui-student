@@ -56,13 +56,24 @@ def _b64url_decode(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * padding)
 
 
-def _verify_session(cookie_header: str) -> dict | None:
-    token = ""
+_ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "https://ui-student-ashen.vercel.app")
+_MAX_PAYLOAD = 512 * 1024          # 512 KB hard cap on request body
+_MAX_QUESTION_LEN = 2000           # characters
+_MIN_REQUEST_GAP = 3               # seconds between turns per user
+_RL_COOKIE = "adfel_rl"
+_COOKIE_SECURE = os.environ.get("ADFEL_COOKIE_SECURE", "1").lower() in ("1", "true", "yes")
+
+
+def _get_cookie(cookie_header: str, name: str) -> str:
     for part in cookie_header.split(";"):
         k, _, v = part.strip().partition("=")
-        if k.strip() == _SESSION_COOKIE:
-            token = v.strip()
-            break
+        if k.strip() == name:
+            return v.strip()
+    return ""
+
+
+def _verify_session(cookie_header: str) -> dict | None:
+    token = _get_cookie(cookie_header, _SESSION_COOKIE)
     if not _SESSION_JWT_SECRET or not token:
         return None
     try:
@@ -80,6 +91,54 @@ def _verify_session(cookie_header: str) -> dict | None:
         return claims
     except Exception:
         return None
+
+
+# ---- session state signing — prevents browser from tampering violation counts
+
+def _sign_state(state: dict) -> dict:
+    if not _SESSION_JWT_SECRET:
+        return state
+    clean = {k: v for k, v in state.items() if k != "_sig"}
+    payload = json.dumps(clean, sort_keys=True)
+    sig = _b64url(hmac.new(_SESSION_JWT_SECRET.encode(), payload.encode(), hashlib.sha256).digest())[:24]
+    return {**clean, "_sig": sig}
+
+
+def _verify_state(state: dict) -> dict:
+    _default = {"question_count": 0, "violation_count": 0, "escalated": False}
+    if not _SESSION_JWT_SECRET:
+        return {k: state.get(k, v) for k, v in _default.items()}
+    sig = state.get("_sig")
+    if not sig:
+        return _default  # no sig = fresh session, start clean
+    clean = {k: v for k, v in state.items() if k != "_sig"}
+    payload = json.dumps(clean, sort_keys=True)
+    expected = _b64url(hmac.new(_SESSION_JWT_SECRET.encode(), payload.encode(), hashlib.sha256).digest())[:24]
+    if not hmac.compare_digest(sig, expected):
+        return _default  # tampered — reset state as penalty
+    return clean
+
+
+# ---- rate limiting via signed cookie (stateless, no external store needed)
+
+def _make_rl_value() -> str:
+    ts = str(int(time.time()))
+    sig = _b64url(hmac.new(_SESSION_JWT_SECRET.encode(), ts.encode(), hashlib.sha256).digest())[:16]
+    return f"{ts}|{sig}"
+
+
+def _rate_limit_ok(cookie_header: str) -> bool:
+    val = _get_cookie(cookie_header, _RL_COOKIE)
+    if not val or not _SESSION_JWT_SECRET:
+        return True
+    try:
+        ts, sig = val.split("|", 1)
+        expected = _b64url(hmac.new(_SESSION_JWT_SECRET.encode(), ts.encode(), hashlib.sha256).digest())[:16]
+        if not hmac.compare_digest(sig, expected):
+            return True  # forged cookie — treat as first request
+        return (time.time() - int(ts)) >= _MIN_REQUEST_GAP
+    except Exception:
+        return True
 
 # ---------------------------------------------------------------------------
 # Load refactored agents by absolute file path via importlib so we don't
@@ -148,8 +207,10 @@ def _handle_turn(body: dict) -> dict:
     question = body.get("question", "").strip()
     if not question:
         raise ValueError("question must be a nonempty string")
+    if len(question) > _MAX_QUESTION_LEN:
+        raise ValueError(f"question exceeds {_MAX_QUESTION_LEN} character limit")
 
-    session_state   = body.get("session_state")   or {}
+    session_state   = _verify_state(body.get("session_state") or {})
     conversation    = body.get("conversation_history") or []
     rag_context     = body.get("rag_context", "")
     learning_summary = body.get("learning_summary", "No prior context.")
@@ -215,8 +276,6 @@ def _handle_turn(body: dict) -> dict:
             else:
                 final_response = SAFE_FALLBACK
                 break
-        else:
-            final_response = draft
 
     # ------------------------------------------------------------------ 4. classify (Participant)
     classify_result = participant.process_request({
@@ -251,7 +310,7 @@ def _handle_turn(body: dict) -> dict:
         "violation_detected": val.get("violation_detected", False),
         "violation_type": val.get("violation_type"),
         "concept_tags": val.get("concept_tags", []),
-        "session_state": next_state,
+        "session_state": _sign_state(next_state),
         "learning_summary": new_summary,
         "hint_levels": hint_levels[-20:],  # keep last 20 so payload stays small
     }
@@ -264,17 +323,36 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self) -> None:
-        # Enforce authentication — reject requests with no valid session cookie.
-        # When SESSION_JWT_SECRET is not set the check is skipped so local dev
-        # without env vars still works.
-        if _SESSION_JWT_SECRET:
-            claims = _verify_session(self.headers.get("Cookie", ""))
-            if not claims:
-                self._json({"status": "error", "error": "unauthorized"}, 401)
-                return
+        self._rl_cookie: str | None = None
+        cookie_header = self.headers.get("Cookie", "")
 
+        # Auth — 500 if misconfigured, 401 if session missing/expired
+        if not _SESSION_JWT_SECRET:
+            self._json({"status": "error", "error": "server misconfigured: SESSION_JWT_SECRET not set"}, 500)
+            return
+        if not _verify_session(cookie_header):
+            self._json({"status": "error", "error": "unauthorized"}, 401)
+            return
+
+        # Rate limit — 3-second minimum gap per user (signed cookie, no DB needed)
+        if not _rate_limit_ok(cookie_header):
+            self._json({"status": "error", "error": "too many requests"}, 429)
+            return
+        secure = "; Secure" if _COOKIE_SECURE else ""
+        self._rl_cookie = (
+            f"{_RL_COOKIE}={_make_rl_value()}; HttpOnly; SameSite=Strict; Max-Age=60; Path=/{secure}"
+        )
+
+        # Payload size cap
         try:
             length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            length = 0
+        if length > _MAX_PAYLOAD:
+            self._json({"status": "error", "error": "request body too large"}, 413)
+            return
+
+        try:
             body = json.loads(self.rfile.read(length)) if length else {}
         except (ValueError, TypeError) as exc:
             self._json({"status": "error", "error": str(exc)}, 400)
@@ -289,9 +367,10 @@ class handler(BaseHTTPRequestHandler):
             self._json({"status": "error", "error": str(exc)}, 502)
 
     def _cors(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", _ALLOWED_ORIGIN)
         self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Credentials", "true")
 
     def _json(self, data: dict, status: int) -> None:
         payload = json.dumps(data).encode()
@@ -299,6 +378,8 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self._cors()
+        if getattr(self, "_rl_cookie", None):
+            self.send_header("Set-Cookie", self._rl_cookie)
         self.end_headers()
         self.wfile.write(payload)
 
