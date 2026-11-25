@@ -48,7 +48,7 @@ class handler(BaseHTTPRequestHandler):
         self.send_header("Location", auth_url)
         self.send_header(
             "Set-Cookie",
-            f"{_STATE_COOKIE}={state}; HttpOnly; SameSite=Lax; Max-Age=600; Path=/{secure}",
+            f"{_STATE_COOKIE}={state}; HttpOnly; SameSite=None; Max-Age=600; Path=/; Secure",
         )
         self.end_headers()
 
