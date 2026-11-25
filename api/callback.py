@@ -182,7 +182,7 @@ class handler(BaseHTTPRequestHandler):
             f"{_SESSION_COOKIE}={token}; HttpOnly; SameSite=Lax; "
             f"Max-Age={_SESSION_TTL}; Path=/{secure}",
         )
-        self.send_header("Set-Cookie", f"{_STATE_COOKIE}=; Max-Age=0; Path=/")
+        self.send_header("Set-Cookie", f"{_STATE_COOKIE}=; Max-Age=0; Path=/; SameSite=None; Secure")
         self.end_headers()
 
     def _redirect(self, url: str) -> None:
